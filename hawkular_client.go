@@ -88,12 +88,6 @@ func get_metrics() ([]HawkMetric,error) {
   ntr_done := make(chan bool, 1)
   var ntr []HawkMetric
 
-  fa_done := make(chan bool, 1)
-  var fa []HawkMetric
-  fl_done := make(chan bool, 1)
-  var fl []HawkMetric
-  fu_done := make(chan bool, 1)
-  var fu []HawkMetric
   // Start Asynch calls to get metrics
   go func(){
     gmu = get_metric(h,metrics.Gauge,"memory/usage",mdef)
