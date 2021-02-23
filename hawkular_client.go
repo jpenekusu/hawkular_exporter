@@ -56,26 +56,9 @@ func get_metrics() ([]HawkMetric,error) {
   // Get running pods from Kubernetes API
   pods, err := clientset.CoreV1().Pods(os.Getenv("HAWKULAR_TENANT")).List(metav1.ListOptions{})
   log.Info("Got Pods ",len(pods.Items))
-  // Get PVCs from Kubernetes API
-  volumes, err := clientset.CoreV1().PersistentVolumeClaims(os.Getenv("HAWKULAR_TENANT")).List(metav1.ListOptions{})
-  if err != nil {
-     log.Errorf("Error getting pvcs %v",err)
-     return nil, err
-  }
-  log.Info("Got Volumes ",len(volumes.Items))
+
   // Iterate through pods and volumes to generate tags to narrow down metrics call to Hawkular
   pods_tag :=""
-  vol_tag :=""
-  for _, pod := range pods.Items {
-    pods_tag=pods_tag+pod.Name+"||"
-    for _, vol := range pod.Spec.Volumes {
-      for _, pvc := range volumes.Items {
-        if vol.VolumeSource.PersistentVolumeClaim != nil && pvc.Name == vol.VolumeSource.PersistentVolumeClaim.ClaimName {
-          vol_tag=vol_tag+"Volume:"+vol.Name+"||"
-        }
-      }
-    }
-  }
   // Get Pod level metrics
   pods_tag=pods_tag[:len(pods_tag)-2]
   tags := make(map[string]string)
@@ -85,14 +68,7 @@ func get_metrics() ([]HawkMetric,error) {
   // Get metric Definitions for pods
   mdef, err := h.Definitions(metrics.Filters(metrics.TagsFilter(tags)))
   log.Info("Got metric defs ", len(mdef))
-  if len(volumes.Items) > 0 {
-    vol_tag=vol_tag[:len(vol_tag)-2]
-  }
-  tags["resource_id"] = vol_tag
-  log.Info(vol_tag)
-  // Get metrics Definitions for volumes
-  vdef, err := h.Definitions(metrics.Filters(metrics.TagsFilter(tags)))
-  log.Info("Got volume defs ", len(vdef))
+  
   // Generate Asynch bool channels
   gmu_done := make(chan bool, 1)
   var gmu []HawkMetric
@@ -147,18 +123,7 @@ func get_metrics() ([]HawkMetric,error) {
     ntr = get_metric(h,metrics.Gauge,"network/tx_rate",mdef)
     ntr_done <- true
   }()
-  go func(){
-    fa = get_metric(h,metrics.Gauge,"filesystem/available",vdef)
-    fa_done <- true
-  }()
-  go func(){
-    fl = get_metric(h,metrics.Gauge,"filesystem/limit",vdef)
-    fl_done <- true
-  }()
-  go func(){
-    fu = get_metric(h,metrics.Gauge,"filesystem/usage",vdef)
-    fu_done <- true
-  }()
+
   // Wait for metrics calls to be finished to append to retmetrics array
   <-gmu_done
   log.Info("Got memory usage:      ", len(gmu),"      ")
@@ -184,16 +149,6 @@ func get_metrics() ([]HawkMetric,error) {
   <-ntr_done
   log.Info("Got Network TX:        ", len(ntr),"      ")
   retmetrics = append(retmetrics,ntr...)
-
-  <-fa_done
-  log.Info("Got Filesystem Avail:  ", len(fa),"      ")
-  retmetrics = append(retmetrics,fa...)
-  <-fl_done
-  log.Info("Got Filesystem Limit:  ", len(fl),"      ")
-  retmetrics = append(retmetrics,fl...)
-  <-fu_done
-  log.Info("Got Filesystem Used:  ", len(fu),"      ")
-  retmetrics = append(retmetrics,fu...)
 
   return retmetrics,nil
 }
